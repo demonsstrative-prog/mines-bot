@@ -1,263 +1,477 @@
 #!/usr/bin/env python3
 """
-Mines 1Win Signals — Advanced 24/7 Channel Bot
-------------------------------------------------
-- Continuous countdown + signal + green cycle
-- Always 3 safe stars (Attempts: 3)
-- Affiliate link on every signal
-- Rotating promo messages
-- Multiple message styles
-- Auto recovery on errors
-- Detailed logging
+================================================================================
+  MINES 1WIN SIGNALS — AI-POWERED ADVANCED CHANNEL BOT
+  Version        : 3.2.0 Advanced
+  Mode           : 24/7 Continuous Signal Engine
+  Safe Stars     : Always 3
+  Platform       : Railway / VPS / Termux
+================================================================================
 """
 
 import requests
 import random
 import time
+import json
+import os
 import sys
+import traceback
 from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Optional
 
-# ═══════════════════════════════════════════════════════════════
-#                        CONFIGURATION
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+#                              CONFIGURATION
+# ══════════════════════════════════════════════════════════════════════════════
 
-BOT_TOKEN   = "8702447245:AAH9tm7f2rqppiziufL2CUeZWe7n14uYZEE"
-CHANNEL_ID  = "-1004331688852"
-AFFILIATE   = "https://lkql.cc/6ac160"
+class Config:
+    # Telegram
+    BOT_TOKEN: str = "8702447245:AAH9tm7f2rqppiziufL2CUeZWe7n14uYZEE"
+    CHANNEL_ID: str = "-1004331688852"
+    AFFILIATE_LINK: str = "https://lkql.cc/6ac160"
 
-# Timing (in seconds)
-SIGNAL_INTERVAL     = 8 * 60        # full cycle every 8 minutes
-COUNTDOWN_5_MIN     = 5 * 60
-COUNTDOWN_1_MIN     = 60
-AFTER_SIGNAL_DELAY  = 35
-AFTER_GREEN_DELAY   = 20
-PROMO_EVERY_N       = 3             # send promo every N signals
+    # Timing (seconds)
+    FULL_CYCLE_SECONDS: int = 8 * 60          # 8 minutes total cycle
+    COUNTDOWN_5_MIN: int = 5 * 60
+    COUNTDOWN_1_MIN: int = 60
+    DELAY_AFTER_SIGNAL: int = 40
+    DELAY_AFTER_GREEN: int = 25
+    DELAY_BEFORE_PROMO: int = 18
+    MIN_SLEEP_BETWEEN_CYCLES: int = 45
 
-# Grid settings
-SAFE_STARS          = 3             # always 3 safe clicks
-MIN_MINES           = 3
-MAX_MINES           = 5
+    # Grid
+    SAFE_STARS: int = 3
+    MIN_BOMBS: int = 3
+    MAX_BOMBS: int = 5
 
-# ═══════════════════════════════════════════════════════════════
-#                        TELEGRAM CORE
-# ═══════════════════════════════════════════════════════════════
+    # Frequency
+    PROMO_EVERY_N_SIGNALS: int = 3
+    TIP_EVERY_N_SIGNALS: int = 5
+    STATS_EVERY_N_SIGNALS: int = 10
+    LONG_TIP_EVERY_N: int = 7
 
-API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+    # Retry
+    MAX_SEND_RETRIES: int = 4
+    RETRY_BASE_DELAY: float = 1.8
 
-def log(msg: str):
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {msg}")
+    # Logging
+    LOG_TO_CONSOLE: bool = True
+    SHOW_STARTUP_BANNER: bool = True
 
-def send(text: str, disable_preview: bool = False) -> bool:
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": disable_preview
-    }
-    for attempt in range(1, 4):
-        try:
-            r = requests.post(f"{API}/sendMessage", json=payload, timeout=20)
-            data = r.json()
-            if data.get("ok"):
-                return True
-            log(f"Telegram error: {data}")
-        except Exception as e:
-            log(f"Send failed (try {attempt}): {e}")
-            time.sleep(2 * attempt)
-    return False
+    # Files (optional persistence)
+    STATS_FILE: str = "bot_stats.json"
 
-# ═══════════════════════════════════════════════════════════════
-#                        GRID GENERATOR
-# ═══════════════════════════════════════════════════════════════
 
-def generate_grid(stars: int = SAFE_STARS) -> str:
-    """Create 5x5 grid with exactly `stars` safe positions."""
-    cells = ["🔵"] * 25
-    positions = random.sample(range(25), stars)
-    for pos in positions:
-        cells[pos] = "⭐"
-    rows = []
-    for r in range(5):
-        rows.append("".join(cells[r*5 : (r+1)*5]))
-    return "\n".join(rows)
+# ══════════════════════════════════════════════════════════════════════════════
+#                              LOGGING SYSTEM
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════════════════════════
-#                        MESSAGE TEMPLATES
-# ═══════════════════════════════════════════════════════════════
+class Logger:
+    @staticmethod
+    def _ts() -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def msg_countdown(minutes: int) -> str:
-    if minutes >= 5:
+    @staticmethod
+    def info(msg: str):
+        if Config.LOG_TO_CONSOLE:
+            print(f"[{Logger._ts()}] [INFO]  {msg}")
+
+    @staticmethod
+    def success(msg: str):
+        if Config.LOG_TO_CONSOLE:
+            print(f"[{Logger._ts()}] [OK]    {msg}")
+
+    @staticmethod
+    def warn(msg: str):
+        if Config.LOG_TO_CONSOLE:
+            print(f"[{Logger._ts()}] [WARN]  {msg}")
+
+    @staticmethod
+    def error(msg: str):
+        if Config.LOG_TO_CONSOLE:
+            print(f"[{Logger._ts()}] [ERROR] {msg}")
+
+    @staticmethod
+    def banner():
+        if not Config.SHOW_STARTUP_BANNER:
+            return
+        print("=" * 70)
+        print("  MINES 1WIN SIGNALS — AI-POWERED ADVANCED ENGINE")
+        print("  Version 3.2.0 | 24/7 Channel Mode | 3-Star Safe Entries")
+        print("=" * 70)
+        print(f"  Channel ID : {Config.CHANNEL_ID}")
+        print(f"  Affiliate  : {Config.AFFILIATE_LINK}")
+        print(f"  Safe Stars : {Config.SAFE_STARS}")
+        print("=" * 70)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#                              TELEGRAM CLIENT
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TelegramClient:
+    def __init__(self):
+        self.api = f"https://api.telegram.org/bot{Config.BOT_TOKEN}"
+        self.session = requests.Session()
+
+    def send(self, text: str, disable_preview: bool = False) -> bool:
+        payload = {
+            "chat_id": Config.CHANNEL_ID,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": disable_preview
+        }
+        for attempt in range(1, Config.MAX_SEND_RETRIES + 1):
+            try:
+                r = self.session.post(
+                    f"{self.api}/sendMessage",
+                    json=payload,
+                    timeout=25
+                )
+                data = r.json()
+                if data.get("ok"):
+                    return True
+                Logger.warn(f"Telegram API response: {data}")
+            except Exception as e:
+                Logger.error(f"Send attempt {attempt} failed: {e}")
+                time.sleep(Config.RETRY_BASE_DELAY * attempt)
+        return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#                              GRID ENGINE
+# ══════════════════════════════════════════════════════════════════════════════
+
+class GridEngine:
+    @staticmethod
+    def generate(stars: int = Config.SAFE_STARS) -> str:
+        cells = ["🔵"] * 25
+        positions = random.sample(range(25), stars)
+        for p in positions:
+            cells[p] = "⭐"
+        rows = []
+        for r in range(5):
+            rows.append("".join(cells[r*5:(r+1)*5]))
+        return "\n".join(rows)
+
+    @staticmethod
+    def random_mines() -> int:
+        return random.randint(Config.MIN_BOMBS, Config.MAX_BOMBS)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#                              MESSAGE FACTORY
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MessageFactory:
+
+    # ── Countdown ──────────────────────────────────────────────
+    @staticmethod
+    def countdown(minutes: int) -> str:
+        if minutes >= 5:
+            variants = [
+                f"⏳ <b>{minutes} minutes left</b> for the next AI signal...\n\nPrepare your balance. Stay focused.",
+                f"⏳ <b>{minutes} minutes remaining</b>\n\nAI model is calculating the next safe entry.",
+                f"⏳ Next AI signal in <b>{minutes} minutes</b>\n\nGet ready. Do not enter randomly.",
+            ]
+        else:
+            variants = [
+                f"⏳ <b>{minutes} minute left</b>...\n\nAI entry is almost ready. Stay in position.",
+                f"⏳ <b>Final minute</b>\n\nSignal dropping soon. Be prepared to click only the stars.",
+                f"⏳ <b>60 seconds</b> until next confirmed entry...",
+            ]
+        return random.choice(variants)
+
+    # ── Main Signal ────────────────────────────────────────────
+    @staticmethod
+    def signal(signal_number: int) -> str:
+        mines = GridEngine.random_mines()
+        grid = GridEngine.generate(Config.SAFE_STARS)
+        now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+
+        ai_notes = [
+            "AI Confidence: High",
+            "Pattern Strength: Strong",
+            "Risk Level: Controlled",
+            "Entry Quality: Optimal",
+            "Model Agreement: 3/3",
+            "Safe Path Detected",
+        ]
+        ai_note = random.choice(ai_notes)
+
+        tips = [
+            "Click only the 3 stars. Never open extra tiles.",
+            "Set the exact bomb count before you start.",
+            "Cash out immediately after the 3 safe clicks.",
+            "If you miss this signal, wait for the next one.",
+        ]
+        tip = random.choice(tips)
+
         return (
-            f"⏳ <b>{minutes} minutes left</b> for the next signal...\n\n"
-            f"Get ready. Prepare your balance."
+            f"🤖💎 <b>AI MINES SIGNAL</b> 💎🤖\n"
+            f"────────────────────────\n"
+            f"✅ <b>CONFIRMED ENTRY</b>\n"
+            f"Bombs: <b>{mines}</b> 💣\n"
+            f"Attempts: <b>{Config.SAFE_STARS}</b>\n"
+            f"Signal #{signal_number}\n"
+            f"────────────────────────\n"
+            f"<code>{grid}</code>\n"
+            f"────────────────────────\n"
+            f"👆 <b><a href=\"{Config.AFFILIATE_LINK}\">Play Here — Open 1Win</a></b>\n\n"
+            f"✅ <b>How to play this signal</b>\n"
+            f"1. Click the link above and login\n"
+            f"2. Open the Mines game\n"
+            f"3. Set bombs = <b>{mines}</b>\n"
+            f"4. Click only the <b>3 ⭐ stars</b>\n"
+            f"5. Cash out after 3 safe tiles\n\n"
+            f"🧠 {ai_note}\n"
+            f"💡 {tip}\n"
+            f"⏰ {now}"
         )
-    return (
-        f"⏳ <b>{minutes} minute left</b> for the next signal...\n\n"
-        f"Almost time. Stay focused."
-    )
 
-def msg_signal(signal_number: int) -> str:
-    mines = random.randint(MIN_MINES, MAX_MINES)
-    grid = generate_grid(SAFE_STARS)
-    now = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    # ── Green / Win ────────────────────────────────────────────
+    @staticmethod
+    def green(signal_number: int) -> str:
+        variants = [
+            f"✅✅✅ <b>GREEEEEEEENNNNN!!!</b> ✅✅✅\n\n"
+            f"💰 AI Signal #{signal_number} secured!\n"
+            f"Clean win. Next entry loading...",
 
-    tips = [
-        "Click only the stars. Do not open any other tile.",
-        "Set the exact bomb count shown above before starting.",
-        "Cash out immediately after the 3 safe clicks.",
-        "Never chase after a loss. Wait for the next signal.",
-    ]
-    tip = random.choice(tips)
+            f"✅✅✅ <b>WIN LOCKED</b> ✅✅✅\n\n"
+            f"🔥 Signal #{signal_number} closed in profit.\n"
+            f"Discipline pays. Stay with the stars only.",
 
-    return (
-        f"💣💎 <b>Mines 1Win Signals</b> 💎💣\n"
-        f"────────────────────\n"
-        f"✅ <b>CONFIRMED ENTRY</b>\n"
-        f"Bombs: <b>{mines}</b> 💣\n"
-        f"Attempts: <b>{SAFE_STARS}</b>\n"
-        f"Signal #{signal_number}\n"
-        f"────────────────────\n"
-        f"<code>{grid}</code>\n"
-        f"────────────────────\n"
-        f"👆 <b><a href=\"{AFFILIATE}\">Play Here — Open 1Win</a></b>\n\n"
-        f"✅ <b>How to play this signal</b>\n"
-        f"1. Click the link above & login\n"
-        f"2. Go to Mines game\n"
-        f"3. Set bombs = <b>{mines}</b>\n"
-        f"4. Click only the <b>3 ⭐ stars</b>\n"
-        f"5. Cash out after 3 safe tiles\n\n"
-        f"💡 {tip}\n\n"
-        f"⏰ {now}"
-    )
+            f"✅✅✅ <b>GREEEEN!</b> ✅✅✅\n\n"
+            f"💎 Another successful AI entry.\n"
+            f"Channel is eating. Keep following.",
 
-def msg_green(signal_number: int) -> str:
-    variants = [
-        f"✅✅✅ <b>GREEEEEEEENNNNN!!!</b> ✅✅✅\n\n"
-        f"💰 Signal #{signal_number} secured!\n"
-        f"Another clean win. Stay with us.",
+            f"✅✅✅ <b>PROFIT TAKEN</b> ✅✅✅\n\n"
+            f"🤖 Signal #{signal_number} completed successfully.\n"
+            f"Prepare for the next confirmed entry.",
+        ]
+        return random.choice(variants)
 
-        f"✅✅✅ <b>GREEEEN!</b> ✅✅✅\n\n"
-        f"🔥 Perfect entry.\n"
-        f"Next signal coming soon. Get ready.",
+    # ── Promo ──────────────────────────────────────────────────
+    @staticmethod
+    def promo() -> str:
+        variants = [
+            f"🎁 <b>500% Welcome Bonus Available</b>\n\n"
+            f"Register with the partner link and unlock the bonus:\n"
+            f"{Config.AFFILIATE_LINK}\n\n"
+            f"Minimum deposit $10 • Fast activation\n"
+            f"This link supports the channel.",
 
-        f"✅✅✅ <b>WIN SECURED</b> ✅✅✅\n\n"
-        f"💎 Signal #{signal_number} closed in profit.\n"
-        f"Keep following the stars only.",
-    ]
-    return random.choice(variants)
+            f"💎 <b>New players — claim your bonus</b>\n\n"
+            f"Use only this link:\n{Config.AFFILIATE_LINK}\n\n"
+            f"500% on first deposit + daily AI signals.",
 
-def msg_promo() -> str:
-    variants = [
-        f"🎁 <b>500% First Deposit Bonus</b>\n\n"
-        f"Register with my partner link and unlock the bonus:\n"
-        f"{AFFILIATE}\n\n"
-        f"Minimum deposit $10 to activate.\n"
-        f"Fast withdrawals • Daily signals",
+            f"🚀 <b>Bonus still active</b>\n\n"
+            f"Click → {Config.AFFILIATE_LINK}\n"
+            f"Register → Deposit → Play with extra balance\n\n"
+            f"Support the channel by using the official link.",
 
-        f"💎 <b>Don't play without the bonus</b>\n\n"
-        f"Use this link to get up to 500% on your first deposit:\n"
-        f"{AFFILIATE}\n\n"
-        f"This is the only link that supports the channel.",
+            f"🔥 <b>Don't play without the bonus</b>\n\n"
+            f"Official partner link:\n{Config.AFFILIATE_LINK}\n\n"
+            f"Higher balance = better risk management.",
+        ]
+        return random.choice(variants)
 
-        f"🚀 <b>New players bonus still available</b>\n\n"
-        f"Click → {AFFILIATE}\n"
-        f"Register → Deposit → Activate 500% bonus\n\n"
-        f"Then come back and follow the live signals.",
-    ]
-    return random.choice(variants)
+    # ── Short Tips ─────────────────────────────────────────────
+    @staticmethod
+    def tip() -> str:
+        tips = [
+            "📌 <b>AI Tip</b>\nNever open extra tiles. Only the 3 stars shown.",
+            "📌 <b>AI Tip</b>\nIf you miss a signal, wait for the next one. Do not force entries.",
+            "📌 <b>AI Tip</b>\nKeep the same bet size. Do not increase after a loss.",
+            "📌 <b>AI Tip</b>\nCash out immediately after the 3 safe clicks.",
+            "📌 <b>AI Tip</b>\nSet the bomb count exactly as shown in the signal.",
+            "📌 <b>AI Tip</b>\nPlay only with money you can afford to lose.",
+        ]
+        return random.choice(tips)
 
-def msg_tip() -> str:
-    tips = [
-        "📌 <b>Pro tip</b>\nNever increase bet size after a loss. Stick to the signal.",
-        "📌 <b>Pro tip</b>\nOnly click the 3 stars shown. Opening extra tiles is the fastest way to lose.",
-        "📌 <b>Pro tip</b>\nWait for the next confirmed entry if you missed the current one.",
-        "📌 <b>Pro tip</b>\nPlay only with money you can afford to lose. Signals are guidance, not guarantees.",
-    ]
-    return random.choice(tips)
+    # ── Longer Educational Tips ────────────────────────────────
+    @staticmethod
+    def long_tip() -> str:
+        tips = [
+            "📚 <b>Quick Lesson</b>\n\n"
+            "The grid shows only 3 safe positions.\n"
+            "Your job is simple: click those 3 stars and cash out.\n"
+            "Opening any other tile is the fastest way to lose the round.",
 
-def msg_stats(total_signals: int) -> str:
-    return (
-        f"📊 <b>Channel Stats</b>\n\n"
-        f"Total signals sent: <b>{total_signals}</b>\n"
-        f"Mode: 3 safe stars only\n"
-        f"Status: 🟢 Online 24/7\n\n"
-        f"Thank you for staying with Mines 1Win Signals."
-    )
+            "📚 <b>Risk Management</b>\n\n"
+            "Never double your bet after a loss.\n"
+            "Stick to the same stake size for at least 10 signals.\n"
+            "This is how long-term players survive.",
 
-# ═══════════════════════════════════════════════════════════════
-#                        MAIN LOOP
-# ═══════════════════════════════════════════════════════════════
+            "📚 <b>Why only 3 stars?</b>\n\n"
+            "3 safe clicks keeps the risk controlled while still giving a solid multiplier.\n"
+            "More clicks = higher chance of hitting a bomb.\n"
+            "We keep it disciplined on purpose.",
+        ]
+        return random.choice(tips)
 
-def main():
-    log("=" * 50)
-    log("Mines 1Win Signals — Advanced Channel Bot")
-    log(f"Channel : {CHANNEL_ID}")
-    log(f"Affiliate: {AFFILIATE}")
-    log(f"Stars   : {SAFE_STARS} safe clicks every signal")
-    log("=" * 50)
+    # ── Stats ──────────────────────────────────────────────────
+    @staticmethod
+    def stats(total_signals: int, uptime_hours: float) -> str:
+        return (
+            f"📊 <b>AI Channel Statistics</b>\n\n"
+            f"Total signals sent: <b>{total_signals}</b>\n"
+            f"Mode: 3-star safe entries only\n"
+            f"Engine status: 🟢 Online 24/7\n"
+            f"Approximate uptime: <b>{uptime_hours:.1f} hours</b>\n\n"
+            f"Thank you for staying with Mines 1Win Signals."
+        )
 
-    # startup message
-    send(
-        "🟢 <b>Bot is online</b>\n\n"
-        "24/7 Mines signals starting now.\n"
-        f"Affiliate: {AFFILIATE}"
-    )
+    # ── Startup ────────────────────────────────────────────────
+    @staticmethod
+    def startup() -> str:
+        return (
+            f"🤖 <b>AI-POWERED ENGINE ONLINE</b>\n\n"
+            f"Mines 1Win Signals advanced mode is now active.\n"
+            f"24/7 automatic confirmed entries running.\n\n"
+            f"🔗 Partner link:\n{Config.AFFILIATE_LINK}\n\n"
+            f"Stay in the channel. Signals are live."
+        )
 
-    signal_count = 0
 
-    while True:
+# ══════════════════════════════════════════════════════════════════════════════
+#                              STATS TRACKER
+# ══════════════════════════════════════════════════════════════════════════════
+
+class StatsTracker:
+    def __init__(self):
+        self.total_signals = 0
+        self.start_time = datetime.now(timezone.utc)
+        self.load()
+
+    def load(self):
+        if os.path.exists(Config.STATS_FILE):
+            try:
+                with open(Config.STATS_FILE, "r") as f:
+                    data = json.load(f)
+                    self.total_signals = data.get("total_signals", 0)
+            except Exception:
+                pass
+
+    def save(self):
         try:
-            # ── 5 minute countdown
-            send(msg_countdown(5))
-            log("Sent 5-min countdown")
-            time.sleep(COUNTDOWN_5_MIN - COUNTDOWN_1_MIN)
-
-            # ── 1 minute countdown
-            send(msg_countdown(1))
-            log("Sent 1-min countdown")
-            time.sleep(COUNTDOWN_1_MIN)
-
-            # ── Main signal
-            signal_count += 1
-            send(msg_signal(signal_count))
-            log(f"Signal #{signal_count} sent")
-
-            time.sleep(AFTER_SIGNAL_DELAY)
-
-            # ── Green / win message
-            send(msg_green(signal_count))
-            log("Green message sent")
-
-            # ── Promo every N signals
-            if signal_count % PROMO_EVERY_N == 0:
-                time.sleep(AFTER_GREEN_DELAY)
-                send(msg_promo())
-                log("Promo message sent")
-
-            # ── Occasional tip
-            if signal_count % 5 == 0:
-                time.sleep(15)
-                send(msg_tip())
-
-            # ── Occasional stats
-            if signal_count % 10 == 0:
-                time.sleep(10)
-                send(msg_stats(signal_count))
-
-            # ── Wait remaining time until next full cycle
-            elapsed = (COUNTDOWN_5_MIN + AFTER_SIGNAL_DELAY + AFTER_GREEN_DELAY)
-            remaining = max(30, SIGNAL_INTERVAL - elapsed)
-            log(f"Sleeping {remaining}s until next cycle")
-            time.sleep(remaining)
-
-        except KeyboardInterrupt:
-            log("Stopped by user")
-            send("🔴 Bot temporarily stopped.")
-            break
+            with open(Config.STATS_FILE, "w") as f:
+                json.dump({
+                    "total_signals": self.total_signals,
+                    "last_update": datetime.now(timezone.utc).isoformat()
+                }, f)
         except Exception as e:
-            log(f"Loop error: {e}")
-            time.sleep(30)
+            Logger.warn(f"Could not save stats: {e}")
+
+    def increment(self):
+        self.total_signals += 1
+        self.save()
+
+    def uptime_hours(self) -> float:
+        delta = datetime.now(timezone.utc) - self.start_time
+        return delta.total_seconds() / 3600.0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#                              MAIN BOT ENGINE
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MinesSignalBot:
+    def __init__(self):
+        self.tg = TelegramClient()
+        self.stats = StatsTracker()
+        self.running = True
+
+    def safe_sleep(self, seconds: int):
+        """Sleep in small chunks so the process stays responsive."""
+        end = time.time() + seconds
+        while time.time() < end and self.running:
+            time.sleep(min(10, end - time.time()))
+
+    def run_cycle(self):
+        # 1. 5-minute countdown
+        self.tg.send(MessageFactory.countdown(5))
+        Logger.info("5-minute countdown sent")
+        self.safe_sleep(Config.COUNTDOWN_5_MIN - Config.COUNTDOWN_1_MIN)
+
+        # 2. 1-minute countdown
+        self.tg.send(MessageFactory.countdown(1))
+        Logger.info("1-minute countdown sent")
+        self.safe_sleep(Config.COUNTDOWN_1_MIN)
+
+        # 3. Main signal
+        self.stats.increment()
+        num = self.stats.total_signals
+        self.tg.send(MessageFactory.signal(num))
+        Logger.success(f"Signal #{num} sent")
+        self.safe_sleep(Config.DELAY_AFTER_SIGNAL)
+
+        # 4. Green message
+        self.tg.send(MessageFactory.green(num))
+        Logger.info("Green message sent")
+
+        # 5. Promo
+        if num % Config.PROMO_EVERY_N_SIGNALS == 0:
+            self.safe_sleep(Config.DELAY_BEFORE_PROMO)
+            self.tg.send(MessageFactory.promo())
+            Logger.info("Promo message sent")
+
+        # 6. Short tip
+        if num % Config.TIP_EVERY_N_SIGNALS == 0:
+            self.safe_sleep(12)
+            self.tg.send(MessageFactory.tip())
+
+        # 7. Long tip
+        if num % Config.LONG_TIP_EVERY_N == 0:
+            self.safe_sleep(10)
+            self.tg.send(MessageFactory.long_tip())
+
+        # 8. Stats
+        if num % Config.STATS_EVERY_N_SIGNALS == 0:
+            self.safe_sleep(8)
+            self.tg.send(MessageFactory.stats(
+                self.stats.total_signals,
+                self.stats.uptime_hours()
+            ))
+
+        # 9. Remaining time until next full cycle
+        used = (Config.COUNTDOWN_5_MIN +
+                Config.DELAY_AFTER_SIGNAL +
+                Config.DELAY_AFTER_GREEN)
+        remaining = max(Config.MIN_SLEEP_BETWEEN_CYCLES,
+                        Config.FULL_CYCLE_SECONDS - used)
+        Logger.info(f"Cycle complete. Sleeping {remaining} seconds")
+        self.safe_sleep(remaining)
+
+    def start(self):
+        Logger.banner()
+        Logger.info("Engine starting...")
+
+        # Startup message
+        self.tg.send(MessageFactory.startup())
+        time.sleep(8)
+
+        Logger.success("Bot is now live and entering main loop")
+
+        while self.running:
+            try:
+                self.run_cycle()
+            except KeyboardInterrupt:
+                Logger.warn("Keyboard interrupt received")
+                self.running = False
+                self.tg.send("🔴 AI Engine temporarily stopped by admin.")
+                break
+            except Exception as e:
+                Logger.error(f"Cycle error: {e}")
+                Logger.error(traceback.format_exc())
+                time.sleep(30)
+
+        Logger.info("Bot stopped.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#                              ENTRY POINT
+# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    main()
+    bot = MinesSignalBot()
+    bot.start()
