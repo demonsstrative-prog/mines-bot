@@ -1,41 +1,38 @@
-# config.py
-# Advanced Automatic Low-Risk Engine
+# grid.py
+# Mines Grid Engine — always exactly 3 safe stars
 
-BOT_TOKEN = "8702447245:AAH9tm7f2rqppiziufL2CUeZWe7n14uYZEE"
-CHANNEL_ID = "-1004331688852"
-ADMIN_IDS = [7296485222]          # your Telegram ID
+import random
+from config import SAFE_STARS, MIN_BOMBS, MAX_BOMBS
 
-AFFILIATE = "https://lkql.cc/6ac160"
-PROMO_CODE = "ALLEYSIGNALS"
-MIN_DEPOSIT = "$3"
+def make_grid(stars: int = SAFE_STARS) -> str:
+    """
+    Generate a 5x5 grid.
+    Exactly `stars` positions are marked as safe (⭐).
+    All other positions are 🔵.
+    """
+    cells = ["🔵"] * 25
+    safe_positions = random.sample(range(25), stars)
+    for pos in safe_positions:
+        cells[pos] = "⭐"
 
-# Timing
-CYCLE_SECONDS = 8 * 60
-COUNTDOWN_5 = 5 * 60
-COUNTDOWN_1 = 60
-DELAY_AFTER_SIGNAL = 40
-DELAY_AFTER_GREEN = 25
-MIN_SLEEP = 45
-RANDOM_DELAY_MIN = 4
-RANDOM_DELAY_MAX = 15
+    rows = []
+    for r in range(5):
+        row = "".join(cells[r*5 : (r+1)*5])
+        rows.append(row)
+    return "\n".join(rows)
 
-# Frequency
-PROMO_EVERY = 3
-TIP_EVERY = 5
-STATS_EVERY = 10
+def random_mines() -> int:
+    """Return a random bomb count between MIN_BOMBS and MAX_BOMBS."""
+    return random.randint(MIN_BOMBS, MAX_BOMBS)
 
-# Mines
-SAFE_STARS = 3
-MIN_BOMBS = 3
-MAX_BOMBS = 5
-
-# Aviator-style low risk targets
-AVIATOR_MIN = 1.35
-AVIATOR_MAX = 2.15
-AVIATOR_ENABLED = True
-MINES_ENABLED = True
-
-# Technical
-MAX_RETRIES = 4
-TIMEOUT = 25
-STATS_FILE = "stats.json"
+def get_mines_signal_data():
+    """
+    Return everything needed for one Mines signal.
+    """
+    mines = random_mines()
+    grid = make_grid(SAFE_STARS)
+    return {
+        "mines": mines,
+        "stars": SAFE_STARS,
+        "grid": grid
+    }
