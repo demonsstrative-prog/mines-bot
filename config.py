@@ -1,8 +1,11 @@
 # config.py
+# Advanced Automatic Low-Risk Engine
+
 BOT_TOKEN = "8702447245:AAH9tm7f2rqppiziufL2CUeZWe7n14uYZEE"
 CHANNEL_ID = "-1004331688852"
-AFFILIATE = "https://lkql.cc/6ac160"
+ADMIN_IDS = [7296485222]          # your Telegram ID
 
+AFFILIATE = "https://lkql.cc/6ac160"
 PROMO_CODE = "ALLEYSIGNALS"
 MIN_DEPOSIT = "$3"
 
@@ -12,11 +15,27 @@ COUNTDOWN_5 = 5 * 60
 COUNTDOWN_1 = 60
 DELAY_AFTER_SIGNAL = 40
 DELAY_AFTER_GREEN = 25
+MIN_SLEEP = 45
+RANDOM_DELAY_MIN = 4
+RANDOM_DELAY_MAX = 15
+
+# Frequency
 PROMO_EVERY = 3
 TIP_EVERY = 5
 STATS_EVERY = 10
 
-# Grid
+# Mines
 SAFE_STARS = 3
 MIN_BOMBS = 3
 MAX_BOMBS = 5
+
+# Aviator-style low risk targets
+AVIATOR_MIN = 1.35
+AVIATOR_MAX = 2.15
+AVIATOR_ENABLED = True
+MINES_ENABLED = True
+
+# Technical
+MAX_RETRIES = 4
+TIMEOUT = 25
+STATS_FILE = "stats.json"
