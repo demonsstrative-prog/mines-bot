@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Mines 1Win Signals — Advanced Multi-File Channel Bot
-24/7 • 3-star entries • Affiliate push
+Mines 1Win Signals — AI Engine (Multi-file)
+24/7 • 3-star entries • ALLEYSIGNALS promo required
 """
 
 import time
-import requests
 from datetime import datetime
+import requests
 
 from config import (
     BOT_TOKEN, CHANNEL_ID, CYCLE_SECONDS,
@@ -41,7 +41,7 @@ def send(text: str) -> bool:
 
 def main():
     log("=" * 55)
-    log("Mines 1Win Signals — Advanced Engine Started")
+    log("Mines 1Win Signals — AI Engine Started")
     log(f"Channel : {CHANNEL_ID}")
     log("=" * 55)
 
@@ -52,7 +52,6 @@ def main():
 
     while True:
         try:
-            # Countdown
             send(countdown(5))
             log("5-min countdown")
             time.sleep(COUNTDOWN_5 - COUNTDOWN_1)
@@ -61,7 +60,6 @@ def main():
             log("1-min countdown")
             time.sleep(COUNTDOWN_1)
 
-            # Signal
             count += 1
             mines = random_mines()
             grid = make_grid()
@@ -69,27 +67,22 @@ def main():
             log(f"Signal #{count} sent")
             time.sleep(DELAY_AFTER_SIGNAL)
 
-            # Green
             send(green(count))
             log("Green sent")
 
-            # Promo
             if count % PROMO_EVERY == 0:
                 time.sleep(DELAY_AFTER_GREEN)
                 send(promo())
                 log("Promo sent")
 
-            # Tip
             if count % TIP_EVERY == 0:
                 time.sleep(12)
                 send(tip())
 
-            # Stats
             if count % STATS_EVERY == 0:
                 time.sleep(10)
                 send(stats(count))
 
-            # Remaining sleep
             used = COUNTDOWN_5 + DELAY_AFTER_SIGNAL + DELAY_AFTER_GREEN
             remaining = max(45, CYCLE_SECONDS - used)
             log(f"Sleeping {remaining}s")
