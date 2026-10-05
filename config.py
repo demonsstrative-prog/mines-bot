@@ -1,38 +1,42 @@
-# grid.py
-# Mines Grid Engine — always exactly 3 safe stars
+# config.py — AI Engine v4
 
-import random
-from config import SAFE_STARS, MIN_BOMBS, MAX_BOMBS
+BOT_TOKEN = "8702447245:AAH9tm7f2rqppiziufL2CUeZWe7n14uYZEE"
+CHANNEL_ID = "-1004331688852"
+ADMIN_IDS = [7296485222]
 
-def make_grid(stars: int = SAFE_STARS) -> str:
-    """
-    Generate a 5x5 grid.
-    Exactly `stars` positions are marked as safe (⭐).
-    All other positions are 🔵.
-    """
-    cells = ["🔵"] * 25
-    safe_positions = random.sample(range(25), stars)
-    for pos in safe_positions:
-        cells[pos] = "⭐"
+AFFILIATE = "https://lkql.cc/6ac160"
+PROMO_CODE = "ALLEYSIGNALS"
+MIN_DEPOSIT = "$3"
 
-    rows = []
-    for r in range(5):
-        row = "".join(cells[r*5 : (r+1)*5])
-        rows.append(row)
-    return "\n".join(rows)
+# Timing
+CYCLE_SECONDS = 7 * 60
+COUNTDOWN_5 = 4 * 60
+COUNTDOWN_1 = 50
+DELAY_AFTER_SIGNAL = 35
+DELAY_AFTER_GREEN = 20
+MIN_SLEEP = 40
+RANDOM_MIN = 3
+RANDOM_MAX = 14
 
-def random_mines() -> int:
-    """Return a random bomb count between MIN_BOMBS and MAX_BOMBS."""
-    return random.randint(MIN_BOMBS, MAX_BOMBS)
+# Frequency
+PROMO_EVERY = 3
+TIP_EVERY = 4
+STATS_EVERY = 8
 
-def get_mines_signal_data():
-    """
-    Return everything needed for one Mines signal.
-    """
-    mines = random_mines()
-    grid = make_grid(SAFE_STARS)
-    return {
-        "mines": mines,
-        "stars": SAFE_STARS,
-        "grid": grid
-    }
+# Mines
+SAFE_STARS = 3
+MIN_BOMBS = 3
+MAX_BOMBS = 5
+
+# Crash games (low risk)
+CRASH_MIN = 1.32
+CRASH_MAX = 2.05
+
+# Modes
+DEFAULT_MODE = "safe"          # safe | normal
+DEFAULT_INTENSITY = "normal"   # normal | aggressive
+
+# Technical
+MAX_RETRIES = 4
+TIMEOUT = 25
+STATS_FILE = "stats_v4.json"
